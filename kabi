@@ -3,6 +3,7 @@
 source include/keys
 source include/colors
 source include/helper
+source include/logging
 
 shopt -s nullglob
 shopt -s dotglob
@@ -19,6 +20,7 @@ cleanup() {
 		tput cnorm
     tput rmcup
     stty echo
+		exit 0
 }
 
 trap cleanup EXIT SIGINT SIGTERM
@@ -41,6 +43,7 @@ IS_REVERSED=0
 USE_DISK_USAGE=-1
 MODE="NORMAL"
 CMD_BUFFER=""
+STATUS_MSG=""
 FILTER_QUERY=""
 
 SORT_FIELD_TYPES=("name" "size" "created at")
@@ -53,11 +56,26 @@ DIRECTORIES=()
 OUTPUT_BUFFER=""
 
 
-load_files() {
-	if ! cd "$CURRENT_DIR" 2>/dev/null; then
-			STATUS_MSG="${RED}Error: Couldn't enter to the directory${R}"
-			cd "$HOME" || exit 1
+load_dir() {
+	local new_dir="$1"
+	log_debug "Entering load_dir for directory: $new_dir"
+	
+	if ! cd "$new_dir" 2>/dev/null; then
+		cd "$CURRENT_DIR"
+		log_error "Failed to enter $new_dir. Permission denied?"
+		STATUS_MSG="Failed to enter $new_dir. Permission denied?"
+		return 1
 	fi
+	load_files
+}
+
+
+load_files() {
+	if (( USE_DISK_USAGE == 1)); then 
+		STATUS_MSG="Loading files..."
+		redraw
+	fi
+
 	CURRENT_DIR="$(pwd)" 
 	CURRENT_PAGE=0
 	FILTER_QUERY=""
@@ -107,7 +125,9 @@ load_files() {
 	ALL_FILES_SIZES+=("${f_sizes[@]}")
 	ALL_FILES_CREATED_AT+=("${f_created_at[@]}")
 
+	log_info "Successfully loaded ${#ALL_FILES[@]} files."
 	apply_filter
+
 }
 
 
@@ -189,7 +209,7 @@ draw_footer() {
 		selected_text="${#SELECTIONS[@]} Selected"
 	fi
 
-	local left_side="$((CURRENT_PAGE+1))/${total_pages} ${selected_text} ${#FILTERED_FILES_SIZES[@]} Files "
+	local left_side="$STATUS_MSG $((CURRENT_PAGE+1))/${total_pages} ${selected_text} ${#FILTERED_FILES_SIZES[@]} Files "
 
 	local padding=$((cols - mode_text_len - ${#left_side} - ${#CMD_BUFFER} - 1))
 	local mode_color=""
@@ -322,6 +342,7 @@ redraw() {
 		tput rc
 		printf "${SHOW_CURSOR}"
 	fi
+	STATUS_MSG=""
 }
 
 
@@ -341,10 +362,22 @@ move_page_up() {
 
 
 move_dir_up() {
+	log_info "User requested: Move to parent directory"
+
+	# Check if we are already at root
+	if [[ "$CURRENT_DIR" == "/" ]]; then
+			log_warn "Already at root directory. Navigation ignored."
+			set_status "Already at root"
+			return
+	fi
+
+	if load_dir "$(dirname "$CURRENT_DIR")"; then
+		log_info "Navigation successful. Now in: $CURRENT_DIR"
+	else
+		log_error "Navigation failed to: $target"
+		STATUS_MSG="Error: Could not move up"
+	fi
 	CMD_BUFFER=""
-	cd "$(dirname "$CURRENT_DIR")" 2>/dev/null
-	CURRENT_DIR=$(pwd)
-	load_files
 }
 
 next_sort_field() {
@@ -394,9 +427,7 @@ handle_normal_mode() {
 			for i in "${!HINTS[@]}"; do	
 				if [[ "${HINTS[$i]}" == "$CMD_BUFFER" ]]; then
 					CMD_BUFFER=""
-					cd "${DIRECTORIES[$i]}" 2>/dev/null
-					CURRENT_DIR="$(pwd)"
-					load_files
+					load_dir "${DIRECTORIES[$i]}"	
 					break
 				fi
 			done
@@ -430,14 +461,14 @@ handle_normal_mode() {
 			v) MODE="VISUAL";;
 			i) 
 				(( USE_DISK_USAGE=USE_DISK_USAGE*-1))
-				load_files
+				load_files	
 				;;
 			$ENTER) 
 				if [[ "${#FILTERED_FILES[@]}" -gt 0 ]]; then 
 					CMD_BUFFER=""
 					cd "${DIRECTORIES[0]}" 2>/dev/null
 					CURRENT_DIR="$(pwd)"
-					load_files
+					load_files	
 				fi
 				;;
 			q) exit;;
@@ -545,7 +576,8 @@ handle_visual_mode() {
 
 
 main() {
-	load_files
+	create_log_dir
+	load_dir "$CURRENT_DIR"
 	while true; do
 		redraw
 		

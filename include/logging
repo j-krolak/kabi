@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+
+LOG_DIR="$HOME/.local/state/kabi"
+LOG_FILE="$LOG_DIR/activity.log"
+
+LOG_LEVEL=2
+
+LOG_ERROR=0
+LOG_WARN=1
+LOG_INFO=2
+LOG_DEBUG=3
+
+LEVEL_NAMES=(
+	ERROR
+	WARN
+	INFO
+	DEBUG
+)
+
+
+_log() {
+	local level=$1	
+	local time=$(date +"%Y-%m-%d %H:%M:%S")
+	local log_type="${LEVEL_NAMES[$level]}"	
+	local msg="${@:2}"
+
+	echo "[$time] [${log_type}] ${msg}" >> "$LOG_FILE"
+	echo "[$time] [${log_type}] ${msg}" >> "$LOG_FILE"
+}
+
+log_debug() { [[ $LOG_LEVEL -ge $LOG_DEBUG ]] && _log $LOG_DEBUG "$1";  }
+log_info() { [[ $LOG_LEVEL -ge $LOG_INFO ]] &&  _log $LOG_INFO "$1"; }
+log_warn() { [[ $LOG_LEVEL -ge $LOG_WARN ]] &&  _log $LOG_WARN "$1"; }
+log_error() { [[ $LOG_LEVEL -ge $LOG_ERROR ]] && _log $LOG_ERROR "$1"; }
+
+fatal() {
+    log_error "$1"
+    echo -e "\e[41m\e[1m FATAL \e[0m $1" >&2
+    exit 1
+}
+
+create_log_dir() {
+	mkdir -p "$LOG_DIR" || fatal "Fatal: Couldn't create log dir."
+}

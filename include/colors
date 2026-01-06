@@ -1,4 +1,4 @@
-#!/usr/bin/venv bash
+#!/usr/bin/env bash
 
 RESET=$(tput sgr0)
 C_ACCENT_BG=$(tput setab 4)  # Blue Background
