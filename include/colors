@@ -10,6 +10,7 @@ C_DIR_FG=$(tput setaf 4)     # Blue Text
 C_FILE_FG=$(tput setaf 7)    # White Text
 C_SIZE_FG=$(tput setaf 8)    # Gray Text
 C_MUTED=$(tput setaf 8)      # Gray
+C_ACTIVE_OPTION=$(tput setaf 11)
 
 # Footer colors
 C_NORMAL_BG=$(tput setab 236)
