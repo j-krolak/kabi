@@ -8,15 +8,24 @@ shopt -s nullglob
 shopt -s dotglob
 stty -echo
 
-tput civis
-trap 'tput cnorm' EXIT
-clear
-
 RESET_CURSOR_POS=$(tput cup 0 0)
 RESET_ROW="\033[K"
 HIDE_CURSOR=$(tput civis)
 SHOW_CURSOR=$(tput cnorm)
 CURRENT_DIR=$(pwd)
+
+cleanup() {
+		tput sgr0
+		tput cnorm
+    tput rmcup
+    stty echo
+}
+
+trap cleanup EXIT SIGINT SIGTERM
+
+tput smcup
+tput civis
+clear
 
 # State
 declare -a ALL_FILES ALL_FILES_SIZES ALL_FILES_CREATED_AT
@@ -431,6 +440,7 @@ handle_normal_mode() {
 					load_files
 				fi
 				;;
+			q) exit;;
 		esac
 	fi		
 }
