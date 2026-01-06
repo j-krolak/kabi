@@ -1,0 +1,34 @@
+#!/usr/bin/venv bash
+
+RESET=$(tput sgr0)
+C_ACCENT_BG=$(tput setab 4)  # Blue Background
+C_ACCENT_FG=$(tput setaf 16)  # White Text
+C_PRIMARY_FG=$(tput setaf 33) 
+C_HINT_BG=$(tput setab 3)    # Yellow Background
+C_HINT_FG=$(tput setaf 46)    # Black Text
+C_DIR_FG=$(tput setaf 4)     # Blue Text
+C_FILE_FG=$(tput setaf 7)    # White Text
+C_SIZE_FG=$(tput setaf 8)    # Gray Text
+C_MUTED=$(tput setaf 8)      # Gray
+
+# Footer colors
+C_NORMAL_BG=$(tput setab 236)
+C_FILTER_BG=$(tput setab 24)
+C_VISUAL_BG=$(tput setab 60)
+
+C_NORMAL_FG=$(tput setaf 250)
+C_FILTER_FG=$( tput setaf 231)
+C_VISUAL_FG=$(tput setaf 231)
+
+COLORS_COUNT=$(tput colors)
+
+if [[ $COLORS_COUNT -lt 256 ]]; then
+	C_NORMAL_BG=$(tput setab 0)
+	C_FILTER_BG=$(tput setab 4)
+	C_VISUAL_BG=$(tput setab 5)
+	C_NORMAL_FG=$(tput setaf 7)
+	C_FILTER_FG=$(tput setaf 15)
+	C_VISUAL_FG=$(tput setaf 15)
+
+fi
+

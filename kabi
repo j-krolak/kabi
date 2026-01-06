@@ -1,0 +1,520 @@
+#!/usr/bin/env bash
+
+source include/keys
+source include/colors
+source include/helper
+
+shopt -s nullglob
+shopt -s dotglob
+stty -echo
+
+tput civis
+trap 'tput cnorm' EXIT
+clear
+
+RESET_CURSOR_POS=$(tput cup 0 0)
+RESET_ROW="\033[K"
+HIDE_CURSOR=$(tput civis)
+SHOW_CURSOR=$(tput cnorm)
+CURRENT_DIR=$(pwd)
+declare -a ALL_FILES
+declare -a FILTERED_FILES
+
+declare -A SELECTIONS
+LAST_SELECTED=""
+
+CURRENT_PAGE=0
+ITEMS_PER_PAGE=$(($(tput lines) - 6))
+
+IS_REVERSED=0
+MODE="NORMAL"
+CMD_BUFFER=""
+FILTER_QUERY=""
+
+SORT_FIELD_TYPES=("name" "size" "created at")
+CURRENT_SORT_FIELD=0
+
+ALL_FILES=()
+ALL_FILES_SIZES=()
+ALL_FILES_CREATED_AT=()
+
+FILTERED_FILES=()
+FILTERED_FILES_SIZES=()
+FILTERED_FILES_CREATED_AT=()
+
+HINTS=()
+DIRECTORIES=()
+
+
+OUTPUT_BUFFER=""
+
+
+load_files() {
+    if ! cd "$CURRENT_DIR" 2>/dev/null; then
+        STATUS_MSG="${RED}Error: Couldn't enter to the directory${R}"
+        cd "$HOME" || exit 1
+    fi
+    CURRENT_DIR="$(pwd)" 
+		CURRENT_PAGE=0
+		FILTER_QUERY=""
+    
+    ALL_FILES=()
+    ALL_FILES_SIZES=()
+    if [[ "$CURRENT_DIR" != "/" ]]; then
+			ALL_FILES+=("..")
+			ALL_FILES_SIZES+=(0)
+			ALL_FILES_CREATED_AT+=(0)
+		fi
+
+    local d_list=(*/)
+    local f_list=(*)
+
+    for d in "${d_list[@]}"; do 
+			ALL_FILES+=("${d%/}")
+			ALL_FILES_SIZES+=(0)
+			ALL_FILES_CREATED_AT+=("$(stat -c'%w' "$d")")
+		done
+
+    for f in "${f_list[@]}"; do
+			[[ -d "$f" ]] || ALL_FILES+=("$f")
+		done
+
+	if  (( ${#f_list[@]} )); then
+			mapfile -t f_sizes <  <(stat -c'%s' "${f_list[@]}")
+			mapfile -t f_created_at < <(stat -c'%w' "${f_list[@]}")
+	else
+		f_sizes=()
+		f_created_at=()
+	fi
+	ALL_FILES_SIZES+=("${f_sizes[@]}")
+	ALL_FILES_CREATED_AT+=("${f_created_at[@]}")
+
+	apply_filter
+}
+
+
+apply_filter() {
+	mapfile -t FILTERED_FILES_IDX < <(printf "%s\n" "${ALL_FILES[@]}" | awk '{print NR-1 "\x1f" $0}' | fzf -f "$FILTER_QUERY" | awk -F'\x1f' '{print $1}')
+	FILTERED_FILES=()
+	FILTERED_FILES_SIZES=()
+	FILTERED_FILES_CREATED_AT=()
+	for i in "${FILTERED_FILES_IDX[@]}"; do
+		FILTERED_FILES+=("${ALL_FILES[$i]}")
+		FILTERED_FILES_SIZES+=("${ALL_FILES_SIZES[$i]}")
+		FILTERED_FILES_CREATED_AT+=("${ALL_FILES_CREATED_AT[$i]}")
+	done
+	CURRENT_PAGE=0
+	apply_sort
+}
+
+
+apply_sort() {
+	local files_idx=()
+	case "${SORT_FIELD_TYPES[CURRENT_SORT_FIELD]}" in
+		name)
+			mapfile -t files_idx < <(printf "%s\n" "${FILTERED_FILES[@]}" | awk '{print $0 "\x1f" NR-1}' | sort | awk -F'\x1f' '{print $2}')  
+			;;
+		size)
+			mapfile -t files_idx  < <(printf "%s\n" "${FILTERED_FILES_SIZES[@]}" | awk '{print $0 "\x1f" NR-1}' | sort -n | awk -F'\x1f' '{print $2}')  
+			;;
+		"created at")
+			mapfile -t files_idx < <(printf "%s\n" "${FILTERED_FILES_CREATED_AT[@]}" | awk '{print $0 "\x1f" NR-1}' | sort | awk -F'\x1f' '{print $2}')  
+			;;
+	esac
+
+	SORTED_FILES=()
+	SORTED_FILES_SIZES=()
+	SORTED_FILES_CREATED_AT=()
+	for i in "${files_idx[@]}"; do
+		SORTED_FILES+=("${FILTERED_FILES[$i]}")
+		SORTED_FILES_SIZES+=("${FILTERED_FILES_SIZES[$i]}")
+		SORTED_FILES_CREATED_AT+=("${FILTERED_FILES_CREATED_AT[$i]}")
+	done
+	FILTERED_FILES=("${SORTED_FILES[@]}")
+	FILTERED_FILES_SIZES=("${SORTED_FILES_SIZES[@]}")
+	FILTERED_FILES_CREATED_AT=("${SORTED_FILES_CREATED_AT[@]}")
+	if [[ $IS_REVERSED -eq 1 ]]; then
+		reverse
+	fi
+}
+
+
+get_hint() {
+	local index=$1
+	local alphabet=(a s d e g t w z x)
+	local first=$(( index / 7 ))
+	local second=$(( index % 7 ))
+	echo "${alphabet[first]}${alphabet[second]}"
+}
+
+draw_top() {
+	printf "$RESET_ROW"
+	printf "$CURRENT_DIR\n"
+}
+
+
+draw_footer() {
+	local cols=$(tput cols)
+	local lines=$(tput lines)
+
+	# Move to last line
+	tput cup $((lines - 1)) 0
+	local total_pages=$((${#FILTERED_FILES[@]} / $ITEMS_PER_PAGE ))
+	if (( total_pages * ITEMS_PER_PAGE < ${#FILTERED_FILES[@]} )); then
+		((total_pages++))
+	fi
+	local fill_len=$((cols - ${#MODE}))
+	local mode_text_len=$((${#MODE} + 4))
+	local selected_text=""
+	
+	if [[ ${#SELECTIONS[@]} -gt 0 ]]; then 
+		selected_text="${#SELECTIONS[@]} Selected"
+	fi
+
+	local left_side="$((CURRENT_PAGE+1))/${total_pages} ${selected_text} ${#FILTERED_FILES_SIZES[@]} Files "
+
+	local padding=$((cols - mode_text_len - ${#left_side} - ${#CMD_BUFFER} - 1))
+	local mode_color=""
+	case "$MODE" in
+		NORMAL) mode_color="$C_NORMAL_BG$C_NORMAL_FG";;
+		FILTER) mode_color="$C_FILTER_BG$C_FILTER_FG";;
+		VISUAL) mode_color="$C_VISUAL_BG$C_FILTER_FG";;
+	esac
+	
+	printf "${mode_color}${BOLD}  %s  ${RESET} %s%*s%s" "$MODE" "$CMD_BUFFER" "$padding"  "" "$left_side" 
+}
+
+
+draw_sort_field() {
+	local text="reverse < ${SORT_FIELD_TYPES[$CURRENT_SORT_FIELD]} >"
+	local pad=$((34 - ${#text}))
+	
+	printf "%*s%s %s\n" "$pad" "" "${C_PRIMARY_FG}r${RESET}everse" "${C_PRIMARY_FG}← ${RESET}${SORT_FIELD_TYPES[$CURRENT_SORT_FIELD]}${C_PRIMARY_FG} →${RESET}"
+}
+
+redraw() {
+	printf "${HIDE_CURSOS}$RESET_CURSOR_POS$RESET_ROW"
+	draw_top
+
+	# Drawing filter input
+	local show_cursor=0
+	printf "${C_PRIMARY_FG}f${RESET}"
+
+	if [[ -z "$FILTER_QUERY" ]]; then
+		if [[ $MODE == "FILTER" ]]; then
+			printf " "
+			tput sc
+			printf "%-24s" ""
+			show_cursor=1
+		else
+			printf "%-25s" "ilter"
+		fi
+	else
+		local query_text="$FILTER_QUERY"
+		if [[ $query_len -gt 20 ]]; then
+			query_text="${query_text: -20}"
+		fi
+		local query_len=${#query_text}
+
+		printf " %s" "$query_text"
+		if [[ $MODE == "FILTER" ]]; then
+			tput sc
+			show_cursor=1
+		fi
+		if [[ $MODE == "VISUAL" ]]; then 
+			local padding=$((24 - query_len))
+			printf "%*s" "$padding" ""
+		else
+			local padding=$((20 - query_len))
+			printf "${C_PRIMARY_FG} del${RESET}%*s" "$padding" ""
+		fi
+	fi
+
+	draw_sort_field
+
+	# Drawing header 
+	printf "$RESET_ROW"
+	printf "${C_MUTED}   %-45s%11s${RESET}\n" "NAME" "SIZE"
+
+	# Drawing files list
+	local local_idx=0
+	local start=$(( CURRENT_PAGE * ITEMS_PER_PAGE ))	
+	local files_len=${#FILTERED_FILES[@]}
+	HINTS=()
+	DIRECTORIES=()
+	local out=""
+	for (( i=start; i<start+ITEMS_PER_PAGE && i<files_len; i++ )); do
+		local filename="${FILTERED_FILES[$i]}"
+		if [[ -z $filename ]]; then
+				continue
+		fi
+		local file_size="$(format_size "${FILTERED_FILES_SIZES[$i]}")"
+
+		local hint=$(get_hint $local_idx)
+		local fullpath="${CURRENT_DIR%/}/$filename"
+		[[ $filename == ".." ]] && fullpath="$(dirname "$CURRENT_DIR")"
+		HINTS+=("$hint")
+		DIRECTORIES+=("$fullpath")
+
+
+		# Gutter
+		if [[ ${SELECTIONS[$fullpath]} -eq 1 ]]; then 
+			out+="${C_PRIMARY_FG}▌${RESET}"
+		else
+			out+=" "
+		fi
+
+		printf -v out "%s${C_HINT_FG}%s${RESET} " "$out" "$hint"
+		[[ -d $fullpath ]] && out+="${C_DIR_FG}"
+
+		printf -v out "%s%-45s${RESET}${C_SIZE_FG}%10s${RESET}\n" "$out" "${filename:0:45}" "$file_size"
+
+		((local_idx++))
+	done
+
+	local empty_lines=$((ITEMS_PER_PAGE-local_idx))
+	for ((i=0; i<empty_lines; i++)); do
+		out+="$RESET_ROW\n"
+	done
+
+	printf "%b" "$out"
+	draw_footer
+	
+	if [[ $show_cursor -eq  0 ]]; then 
+		printf "${HIDE_CURSOR}"
+	else
+		tput rc
+		printf "${SHOW_CURSOR}"
+	fi
+}
+
+
+move_page_down() {
+	((CURRENT_PAGE++))
+	if [[ $((ITEMS_PER_PAGE * CURRENT_PAGE)) -ge "${#FILTERED_FILES[@]}" ]]; then 
+		((CURRENT_PAGE--))
+	fi
+} 
+
+move_page_up() {
+	((CURRENT_PAGE--))
+	if [[ $CURRENT_PAGE -lt 0 ]];  then
+		CURRENT_PAGE=0
+	fi
+}
+
+
+move_dir_up() {
+	CMD_BUFFER=""
+	cd "$(dirname "$CURRENT_DIR")" 2>/dev/null
+	CURRENT_DIR=$(pwd)
+	load_files
+}
+
+next_sort_field() {
+	((CURRENT_SORT_FIELD++))
+	if [[ $CURRENT_SORT_FIELD -ge  ${#SORT_FIELD_TYPES[@]} ]]; then
+		CURRENT_SORT_FIELD=0
+	fi
+
+	apply_sort
+}
+
+previous_sort_field() {
+	((CURRENT_SORT_FIELD--))
+	if [[ $CURRENT_SORT_FIELD -lt 0 ]]; then
+		CURRENT_SORT_FIELD=$((${#SORT_FIELD_TYPES[@]} - 1))
+	fi
+
+	apply_sort
+}
+
+
+reverse_array() {
+	local -n arr=$1
+	local tmp=()
+	for ((i=${#arr[@]}-1; i>=0; i--)); do
+		tmp+=("${arr[$i]}")
+	done
+	arr=("${tmp[@]}")
+}
+
+
+reverse() {
+	reverse_array FILTERED_FILES
+	reverse_array FILTERED_FILES_SIZES 
+	reverse_array FILTERED_FILES_CREATED_AT 
+}
+
+
+handle_normal_mode() {
+	if [[ "$char" == $BACKSPACE ]]; then 
+		CMD_BUFFER="${CMD_BUFFER%?}"
+	elif [[ "$char" =~ [asdegtwzx] ]]; then
+		CMD_BUFFER+="$char"
+
+		if [[ ${#CMD_BUFFER} == 2 ]]; then
+
+			for i in "${!HINTS[@]}"; do	
+				if [[ "${HINTS[$i]}" == "$CMD_BUFFER" ]]; then
+					CMD_BUFFER=""
+					cd "${DIRECTORIES[$i]}" 2>/dev/null
+					CURRENT_DIR="$(pwd)"
+					load_files
+					break
+				fi
+			done
+		fi
+	else
+		case "$char" in
+			j) move_page_down;;
+			k) move_page_up;;
+			h) move_dir_up;;
+			r) 
+				if [[ $IS_REVERSED -eq 0 ]]; then 
+					IS_REVERSED=1
+				else
+					IS_REVERSED=0
+				fi
+				reverse;;
+			$'\e') 
+				read -rsn2 rest
+				local input="$char$rest"
+				case "$input" in
+					$RIGHT_ARROW) next_sort_field;;
+					$LEFT_ARROW) previous_sort_field;;
+					$'\e[3')
+						read -rsn1 last
+						FILTER_QUERY=""
+						apply_filter
+					;;
+				esac
+				;;
+			"f" | "/") MODE="FILTER";; 
+			v) MODE="VISUAL";;
+			$ENTER) 
+				if [[ "${#FILTERED_FILES[@]}" -gt 0 ]]; then 
+					CMD_BUFFER=""
+					cd "${DIRECTORIES[0]}" 2>/dev/null
+					CURRENT_DIR="$(pwd)"
+					load_files
+				fi
+				;;
+		esac
+	fi		
+}
+
+handle_filter_mode() {
+	case "$char" in
+		$ESCAPE | $ENTER) MODE="NORMAL";;
+		$BACKSPACE) FILTER_QUERY="${FILTER_QUERY%?}";;
+		*)	FILTER_QUERY+="$char";;
+	esac
+
+	apply_filter
+}
+
+
+get_fullpath_by_hint() {
+	hint="$1"
+
+	for i in "${!HINTS[@]}"; do	
+		if [[ "${HINTS[$i]}" == "$hint" ]]; then
+			local fullpath="${DIRECTORIES[$i]}"
+			echo "$fullpath" 
+			return 0
+		fi
+	done
+	return 1
+}
+
+handle_visual_mode() {
+	if [[ "$char" =~ [asdegtwzx] ]]; then 
+		CMD_BUFFER+="$char"
+
+		if [[ ${CMD_BUFFER:0:1} == ":" ]]; then
+			if [[ ${#CMD_BUFFER} -eq 3 ]]; then 
+				local hint=${CMD_BUFFER:1:2}	
+				local selected_fullpath=$(get_fullpath_by_hint "$hint")
+				local status=$?
+				if (( status == 0)); then
+					local is_selecting=-1 
+					for filename in "${FILTERED_FILES[@]}"; do
+						local fullpath="${CURRENT_DIR%/}/$filename"
+						[[ $filename == ".." ]] && fullpath="$(dirname "$CURRENT_DIR")"
+
+						if [[ (is_selecting -eq 1 && "$fullpath" != "$LAST_SELECTED") || "$fullpath" == "$selected_fullpath" ]]; then
+							if [[ -n ${SELECTIONS["$fullpath"]} ]]; then
+								unset "SELECTIONS[$fullpath]"
+							else	
+								SELECTIONS["$fullpath"]=1
+							fi
+
+						fi
+
+						[[ $fullpath == $selected_fullpath || $fullpath == $LAST_SELECTED ]]  && ((is_selecting=-1*is_selecting))
+					done
+					CMD_BUFFER=""
+				fi
+
+			fi
+		elif [[ ${#CMD_BUFFER} -eq 2 ]]; then
+			
+			local selected_fullpath=$(get_fullpath_by_hint "$CMD_BUFFER")
+			local status=$?
+			if (( status == 0 )); then
+					LAST_SELECTED="$selected_fullpath"
+					if [[ -n ${SELECTIONS["$selected_fullpath"]} ]]; then
+						unset "SELECTIONS[$selected_fullpath]"  
+					else
+						SELECTIONS["$selected_fullpath"]=1
+					fi
+					CMD_BUFFER=""
+					redraw
+				fi
+		fi
+	else
+		case "$char" in
+			$ESCAPE | "v") 
+				MODE="NORMAL"
+				CMD_BUFFER=""
+				;;
+			$BACKSPACE) CMD_BUFFER="${CMD_BUFFER%?}";;
+			j) move_page_down;;
+			k) move_page_up;;
+			h) move_dir_up;;
+			"f" | "/") MODE="FILTER";;
+			":")
+				[[ -z $CMD_BUFFER ]] && CMD_BUFFER=":"
+				;;
+			$ESCAPE) 
+				read -rsn2 rest
+				local input="$char$rest"
+				case "$input" in
+					$DELETE)
+						read -rsn1 last
+						unset SELECTIONS
+					;;
+				esac
+				;;
+	
+		esac
+	fi
+}
+
+
+main() {
+	load_files
+	while true; do
+		redraw
+		
+		IFS= read -rsn1 char 	
+		case "$MODE" in
+			NORMAL) handle_normal_mode;;
+			FILTER) handle_filter_mode;;
+			VISUAL) handle_visual_mode;;
+		esac
+	done
+}
+
+main

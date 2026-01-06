@@ -1,0 +1,13 @@
+#!/usr/bin/venv bash 
+
+# Faster for calling then numfmt
+format_size() {
+    local size=$1
+    local units=('B' 'K' 'M' 'G' 'T' 'P')
+    local unit_idx=0
+    while ((size > 1024 && unit_idx < 5)); do
+        ((size /= 1024))
+        ((unit_idx++))
+    done
+    printf "%4d%s" "$size" "${units[$unit_idx]}"
+}

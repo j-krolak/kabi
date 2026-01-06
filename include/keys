@@ -1,0 +1,9 @@
+#!/usr/bin/venv bash
+
+BACKSPACE=$'\x7f'
+ESCAPE=$'\e'
+DELETE=$'\e[3'
+ENTER=""
+RIGHT_ARROW=$'\e[C'
+LEFT_ARROW=$'\e[D'
+
