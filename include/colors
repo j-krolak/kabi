@@ -16,10 +16,12 @@ C_ACTIVE_OPTION=$(tput setaf 11)
 C_NORMAL_BG=$(tput setab 236)
 C_FILTER_BG=$(tput setab 24)
 C_VISUAL_BG=$(tput setab 60)
+C_SEARCH_BG=$(tput setab 172)
 
 C_NORMAL_FG=$(tput setaf 250)
 C_FILTER_FG=$( tput setaf 231)
 C_VISUAL_FG=$(tput setaf 231)
+C_SEARCH_FG=$(tput setaf 232)
 
 COLORS_COUNT=$(tput colors)
 
@@ -27,9 +29,11 @@ if [[ $COLORS_COUNT -lt 256 ]]; then
 	C_NORMAL_BG=$(tput setab 0)
 	C_FILTER_BG=$(tput setab 4)
 	C_VISUAL_BG=$(tput setab 5)
+	C_SEARCH_BG=$(tput setab 3)
+
 	C_NORMAL_FG=$(tput setaf 7)
 	C_FILTER_FG=$(tput setaf 15)
 	C_VISUAL_FG=$(tput setaf 15)
-
+	C_SEARCH_FG=$(tput setaf 0)
 fi
 

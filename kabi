@@ -41,6 +41,7 @@ ITEMS_PER_PAGE=$(($(tput lines) - 6))
 
 IS_REVERSED=0
 USE_DISK_USAGE=-1
+# NORMAL, VISUAL, FILTER, SEARCH
 MODE="NORMAL"
 CMD_BUFFER=""
 STATUS_MSG=""
@@ -193,8 +194,14 @@ draw_top() {
 
 
 draw_footer() {
+	
 	local cols=$(tput cols)
 	local lines=$(tput lines)
+
+	local placeholder=""
+	if [[ "$MODE" == "SEARCH" && "${#CMD_BUFFER}" -eq 0 ]]; then
+		placeholder="${C_MUTED}type:[f|d]  size:[+|-][k|M|G]  date:[-days] (e.g. .jpg size:+1M)${RESET}"
+	fi
 
 	# Move to last line
 	tput cup $((lines - 1)) 0
@@ -212,15 +219,19 @@ draw_footer() {
 
 	local left_side="$STATUS_MSG $((CURRENT_PAGE+1))/${total_pages} ${selected_text} ${#FILTERED_FILES_SIZES[@]} Files "
 
-	local padding=$((cols - mode_text_len - ${#left_side} - ${#CMD_BUFFER} - 1))
+
+	local padding=$((cols - mode_text_len - ${#left_side} - ${#CMD_BUFFER} - ${#placeholder} - 1))
 	local mode_color=""
 	case "$MODE" in
 		NORMAL) mode_color="$C_NORMAL_BG$C_NORMAL_FG";;
 		FILTER) mode_color="$C_FILTER_BG$C_FILTER_FG";;
 		VISUAL) mode_color="$C_VISUAL_BG$C_FILTER_FG";;
+		SEARCH) mode_color="$C_SEARCH_BG$C_SEARCH_FG";; 
 	esac
 	
-	printf "${mode_color}${BOLD}  %s  ${RESET} %s%*s%s" "$MODE" "$CMD_BUFFER" "$padding"  "" "$left_side" 
+	printf "${mode_color}${BOLD}  %s  ${RESET} %s" "$MODE" "$CMD_BUFFER" 
+	[[ "$MODE" == "SEARCH" ]] && tput sc
+	printf "%s%*s%s" "$placeholder" "$padding"  "" "$left_side" 
 }
 
 
@@ -246,10 +257,10 @@ draw_sort_field() {
 	fi
 
 	printf "%*s%s %s\n" "$pad" "" "${C_PRIMARY_FG}r${text_color}everse" "${C_PRIMARY_FG}← ${RESET}${SORT_FIELD_TYPES[$CURRENT_SORT_FIELD]}${C_PRIMARY_FG} →${RESET}"
-	}
+}
 
 redraw() {
-	printf "${HIDE_CURSOS}$RESET_CURSOR_POS$RESET_ROW"
+	printf "${HIDE_CURSOR}$RESET_CURSOR_POS$RESET_ROW"
 	draw_top
 
 	# Drawing filter input
@@ -335,6 +346,7 @@ redraw() {
 	done
 
 	printf "%b" "$out"
+	[[ "$MODE" == "SEARCH" ]] && show_cursor=1;
 	draw_footer
 	
 	if [[ $show_cursor -eq  0 ]]; then 
@@ -458,8 +470,13 @@ handle_normal_mode() {
 					;;
 				esac
 				;;
-			"f" | "/") MODE="FILTER";; 
+			f) MODE="FILTER";; 
 			v) MODE="VISUAL";;
+			"/")
+				FILTER_QUERY=""
+				CMD_BUFFER=""
+				MODE="SEARCH"
+				;;
 			i) 
 				(( USE_DISK_USAGE=USE_DISK_USAGE*-1))
 				load_files	
@@ -475,6 +492,54 @@ handle_normal_mode() {
 			q) exit;;
 		esac
 	fi		
+}
+
+run_search() {
+
+	if [[ -z "$CMD_BUFFER" ]]; then
+		load_files
+		return
+	fi
+
+	STATUS_MSG="Searching..."
+	redraw
+	
+	local find_args=(".")
+	local name_query=""
+	read -a  params <<< "$CMD_BUFFER"
+
+	for param in "${params[@]}"; do
+		case "$param" in
+			type:*) find_args+=("-type" "${param#type:}");;
+			size:*) find_args+=("-size" "${param#size:}");;
+			date:*) find_args+=("-mtime" "${param#date:}");;
+			*) name_query="$param"
+		esac
+	done
+
+
+	if [[ -n "$name_query" ]]; then
+		find_args+=("-iname" "*$name_query*")
+	fi
+
+	ALL_FILES=()
+	ALL_FILES_SIZES=()
+	ALL_FILES_CREATED_AT=()
+
+	while IFS='|' read -r f_path f_size f_time; do
+			[[ -z "$f_path" ]] && continue
+			ALL_FILES+=("$f_path")
+			ALL_FILES_SIZES+=("$f_size")
+			ALL_FILES_CREATED_AT+=("${f_time%.*}")
+	done < <(find "${find_args[@]}" -printf "%P|%s|%T@\n" 2>/dev/null | head -n 500)
+
+	if [[ ${#ALL_FILES[@]} -eq 0 ]]; then
+		STATUS_MSG="No files found."
+		load_files     
+	else
+		CURRENT_PAGE=0
+		apply_filter
+	fi
 }
 
 handle_filter_mode() {
@@ -556,7 +621,7 @@ handle_visual_mode() {
 			j) move_page_down;;
 			k) move_page_up;;
 			h) move_dir_up;;
-			"f" | "/") MODE="FILTER";;
+			"f") MODE="FILTER";;
 			":")
 				[[ -z $CMD_BUFFER ]] && CMD_BUFFER=":"
 				;;
@@ -575,6 +640,24 @@ handle_visual_mode() {
 	fi
 }
 
+handle_search_mode() {
+		case "$char" in
+			$ESCAPE) 
+				MODE="NORMAL"
+				CMD_BUFFER=""
+				;;
+			$ENTER)
+				run_search
+				;;
+			$BACKSPACE) 
+				CMD_BUFFER="${CMD_BUFFER%?}"
+				;;
+			*) 
+				CMD_BUFFER+="$char" 
+				;;
+		esac
+
+}
 
 main() {
 	create_log_dir
@@ -587,6 +670,7 @@ main() {
 			NORMAL) handle_normal_mode;;
 			FILTER) handle_filter_mode;;
 			VISUAL) handle_visual_mode;;
+			SEARCH) handle_search_mode;;
 		esac
 	done
 }
