@@ -46,6 +46,7 @@ MODE="NORMAL"
 CMD_BUFFER=""
 STATUS_MSG=""
 FILTER_QUERY=""
+OVERALL_SIZE=0
 
 SORT_FIELD_TYPES=("name" "size" "created at")
 CURRENT_SORT_FIELD=0
@@ -127,6 +128,12 @@ load_files() {
 	ALL_FILES_SIZES+=("${f_sizes[@]}")
 	ALL_FILES_CREATED_AT+=("${f_created_at[@]}")
 
+	# Count the overall size of the current directory
+	OVERALL_SIZE=0
+	for size in "${ALL_FILES_SIZES[@]}"; do
+		((OVERALL_SIZE+=size))
+	done
+
 	log_info "Successfully loaded ${#ALL_FILES[@]} files."
 	apply_filter
 
@@ -199,8 +206,10 @@ draw_footer() {
 	local lines=$(tput lines)
 
 	local placeholder=""
+	local placeholder_raw=""
 	if [[ "$MODE" == "SEARCH" && "${#CMD_BUFFER}" -eq 0 ]]; then
-		placeholder="${C_MUTED}type:[f|d]  size:[+|-][k|M|G]  date:[-days] (e.g. .jpg size:+1M)${RESET}"
+		placeholder_raw="type:[f|d]  size:[+|-][k|M|G]  date:[-days] (e.g. .jpg size:+1M)"
+		placeholder="${C_MUTED}${placeholder_raw}${RESET}"
 	fi
 
 	# Move to last line
@@ -217,10 +226,9 @@ draw_footer() {
 		selected_text="${#SELECTIONS[@]} Selected"
 	fi
 
-	local left_side="$STATUS_MSG $((CURRENT_PAGE+1))/${total_pages} ${selected_text} ${#FILTERED_FILES_SIZES[@]} Files "
+	local left_side="$STATUS_MSG $(format_size ${OVERALL_SIZE}) $((CURRENT_PAGE+1))/${total_pages} ${selected_text} ${#FILTERED_FILES_SIZES[@]} Files"
 
-
-	local padding=$((cols - mode_text_len - ${#left_side} - ${#CMD_BUFFER} - ${#placeholder} - 1))
+	local padding=$((cols - mode_text_len - ${#left_side} - ${#CMD_BUFFER} - ${#placeholder_raw} - 1))
 	local mode_color=""
 	case "$MODE" in
 		NORMAL) mode_color="$C_NORMAL_BG$C_NORMAL_FG";;
