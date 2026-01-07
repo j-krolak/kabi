@@ -89,7 +89,6 @@ load_files() {
 	fi
 
 	local d_list=(*/)
-	local f_list=(*)
 
 	# Add directories
 	local d_sizes=()
@@ -100,28 +99,30 @@ load_files() {
 	
 	if (( ${#d_list[@]} )); then
 		if (( USE_DISK_USAGE == 1 )); then
-			mapfile -t d_sizes < <(du -sb "${d_list[@]}" 2>/dev/null | cut -f1)
+			mapfile -t d_sizes < <(du -s --block-size=1 "${d_list[@]}" 2>/dev/null | cut -f1)
 		else
 			mapfile -t d_sizes < <(stat -c'%s' "${d_list[@]}")
 		fi
-		mapfile -t d_created_at < <(stat -c'%w' "${d_list[@]}")
+		mapfile -t d_created_at < <(stat -c'%Y' "${d_list[@]}")
 	fi
 
 	ALL_FILES_SIZES+=("${d_sizes[@]}")
 	ALL_FILES_CREATED_AT+=("${d_created_at[@]}")
 
 	# Add files
-	for f in "${f_list[@]}"; do
-		[[ -d "$f" ]] || ALL_FILES+=("$f")
+	local f_list=()
+	for f in *; do
+		[[ -d "$f" ]] || f_list+=("$f")
 	done
 
 	if  (( ${#f_list[@]} )); then
 			mapfile -t f_sizes <  <(stat -c'%s' "${f_list[@]}")
-			mapfile -t f_created_at < <(stat -c'%w' "${f_list[@]}")
+			mapfile -t f_created_at < <(stat -c'%Y' "${f_list[@]}")
 	else
 		f_sizes=()
 		f_created_at=()
 	fi
+	ALL_FILES+=("${f_list[@]}")
 	ALL_FILES_SIZES+=("${f_sizes[@]}")
 	ALL_FILES_CREATED_AT+=("${f_created_at[@]}")
 
