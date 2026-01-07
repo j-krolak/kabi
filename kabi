@@ -7,7 +7,6 @@ source include/logging
 
 shopt -s nullglob
 shopt -s dotglob
-stty -echo
 
 RESET_CURSOR_POS=$(tput cup 0 0)
 RESET_ROW="\033[K"
@@ -23,11 +22,6 @@ cleanup() {
 		exit 0
 }
 
-trap cleanup EXIT SIGINT SIGTERM
-
-tput smcup
-tput civis
-clear
 
 # State
 declare -a ALL_FILES ALL_FILES_SIZES ALL_FILES_CREATED_AT
@@ -666,9 +660,76 @@ handle_search_mode() {
 		esac
 
 }
+show_help() {
+    cat << EOF
+${C_PRIMARY_FG}${BOLD}kabi${RESET} - A Hint-Based Terminal Navigator
+
+${C_PRIMARY_FG}${BOLD}USAGE${RESET}
+  $(basename "$0") [OPTIONS] [PATH]
+
+${C_PRIMARY_FG}${BOLD}NAVIGATION${RESET}
+  ${C_HINT_FG}j / k${RESET}                 Go to Next / Previous Page
+  ${C_HINT_FG}h${RESET}                     Go to Parent Directory
+  ${C_HINT_FG}[a-z][a-z]${RESET}            Type the 2-letter hint to jump/enter directly.
+  ${C_HINT_FG}Enter${RESET}                 Enter the ${BOLD}top directory${RESET} (first item in list).
+
+${C_PRIMARY_FG}${BOLD}MODES${RESET}
+  ${C_HINT_FG}f${RESET}                     ${BOLD}Filter Mode:${RESET} Live fuzzy find (Top result becomes Enter target).
+  ${C_HINT_FG}/${RESET}                     ${BOLD}Search Mode:${RESET} Deep search (find command wrapper).
+  ${C_HINT_FG}v${RESET}                     ${BOLD}Visual Mode:${RESET} Select multiple files.
+  ${C_HINT_FG}Esc${RESET}                   Return to Normal mode / Clear buffer.
+  ${C_HINT_FG}q${RESET}                     Quit.
+
+${C_PRIMARY_FG}${BOLD}SORTING & VIEW${RESET}
+  ${C_HINT_FG}→ / ←${RESET}                 Cycle sort field (Name, Size, Date).
+  ${C_HINT_FG}r${RESET}                     Toggle Reverse sort order.
+  ${C_HINT_FG}i${RESET}                     Toggle Disk Usage (calculates dir sizes).
+
+${C_PRIMARY_FG}${BOLD}VISUAL MODE COMMANDS (v)${RESET}
+  ${C_HINT_FG}[hint]${RESET}                Select/Deselect specific file.
+  ${C_HINT_FG}:[hint]${RESET}               Range select (from last selected to target).
+  ${C_HINT_FG}Del${RESET}                   Clear all selections.
+
+${C_PRIMARY_FG}${BOLD}SEARCH SYNTAX (/)${RESET}
+  ${C_MUTED}name type:[f|d] size:[+|-][k|M|G] date:[-days]${RESET}
+  Ex: ${C_HINT_FG}.jpg size:+5M${RESET} (Find JPGs > 5MB)
+
+${C_PRIMARY_FG}${BOLD}OPTIONS${RESET}
+  ${C_ACTIVE_OPTION}-f, --follow${RESET}           Stream app logs in real-time.
+  ${C_ACTIVE_OPTION}-h, --help${RESET}             Show this help message.
+
+EOF
+}
 
 main() {
 	create_log_dir
+
+	# Parse arguments
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+			-h|--help)
+					show_help
+					exit 0
+					;;
+			-f|--follow) 
+				watch_logs
+				shift
+				;;
+			*)
+				if [[ -d "$1" ]]; then
+					CURRENT_DIR="$1"
+				fi
+				shift
+				;;
+		esac
+	done
+
+	tput smcup
+	tput civis
+	stty -echo
+	clear
+
+	trap cleanup EXIT SIGINT SIGTERM
 	load_dir "$CURRENT_DIR"
 	while true; do
 		redraw
@@ -683,4 +744,4 @@ main() {
 	done
 }
 
-main
+main "$@"

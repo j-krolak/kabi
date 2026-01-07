@@ -42,3 +42,8 @@ fatal() {
 create_log_dir() {
 	mkdir -p "$LOG_DIR" || fatal "Fatal: Couldn't create log dir."
 }
+
+watch_logs() {
+	tail -f "$LOG_FILE"
+	exit 0
+}
