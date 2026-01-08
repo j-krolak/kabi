@@ -203,7 +203,13 @@ draw_footer() {
 	fi
 
 	# Move to last line
-	tput cup $((lines - 1)) 0
+	tput cup $((lines - 2)) 0
+	if [[ ${#SELECTIONS[@]} -gt 0 && "$MODE" == "VISUAL" ]]; then
+		printf "${RESET_ROW}Selected ${C_PRIMARY_FG}D${RESET}elete ${C_PRIMARY_FG}M${RESET}ove ${C_PRIMARY_FG}C${RESET}opy\n"
+	else
+		printf "${RESET_ROW}\n"
+	fi
+
 	local total_pages=$((${#FILTERED_FILES[@]} / ITEMS_PER_PAGE ))
 	if (( total_pages * ITEMS_PER_PAGE < ${#FILTERED_FILES[@]} )); then
 		((total_pages++))
@@ -262,6 +268,7 @@ redraw() {
 
 	# Drawing filter input
 	local show_cursor=0
+	printf "${RESET_ROW}"
 	printf "${C_PRIMARY_FG}f${RESET}"
 
 	if [[ -z "$FILTER_QUERY" ]]; then
@@ -467,7 +474,7 @@ handle_normal_mode() {
 				case "$input" in
 					$RIGHT_ARROW) next_sort_field;;
 					$LEFT_ARROW) previous_sort_field;;
-					$'\e[3')
+					$DELETE)
 						read -rsn1 last
 						FILTER_QUERY=""
 						apply_filter
@@ -568,6 +575,85 @@ get_fullpath_by_hint() {
 	return 1
 }
 
+
+delete_selected() {
+	local count=${#SELECTIONS[@]}
+	[[ $count -eq 0 ]] && return
+
+	STATUS_MSG="${C_ERROR}${BOLD}DELETE $count items? (y/n)${RESET}"
+	redraw
+
+	IFS= read -rsn1 confirm
+	if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+		log_info "User confirmed deletion of $count items."
+		rm -rf "${!SELECTIONS[@]}" || log_error "Delete failed."
+		STATUS_MSG="${C_SUCCESS}Deleted successfully.${RESET}"
+		unset SELECTIONS
+		declare -A SELECTIONS
+		load_files
+	else
+		log_info "Deletion cancelled by user."
+		STATUS_MSG="Deletion cancelled."
+	fi
+
+	STATUS_MSG="Deleted $count items."
+	unset SELECTIONS
+	declare -g -A SELECTIONS
+	load_files
+}
+
+move_selected() {
+	local count=${#SELECTIONS[@]}
+	[[ $count -eq 0 ]] && return
+	log_info "Starting moving of $count items to $CURRENT_DIR"
+
+	for filepath in "${!SELECTIONS[@]}"; do
+		local filename=$(basename "$filepath")
+		if [[ "$filepath" == "$CURRENT_DIR/$filename" ]]; then
+			log_warn "Skipping $filename: Source and destination are the same."
+			continue
+		fi
+
+		if mv "$filepath" "$CURRENT_DIR/$filename" 2>>"$LOG_FILE"; then
+			log_debug "Moved: $filepath"
+
+		else
+			log_error "Failed to move: $filepath"
+		fi
+	done
+	
+	unset SELECTIONS
+	declare -g -A SELECTIONS
+	STATUS_MSG="Moved $count items."
+	load_files
+}
+
+copy_selected() {
+	local count=${#SELECTIONS[@]}
+	[[ $count -eq 0 ]] && return
+
+	log_info "Starting copy of $count items to $CURRENT_DIR"
+
+	for filepath in "${!SELECTIONS[@]}"; do 
+		local filename=$(basename "$filepath")
+
+		if [[ "$filepath" == "$CURRENT_DIR/$filename" ]]; then
+			log_warn "Skipping $filename: Source and destination are the same."
+			continue
+		fi
+		if cp -r "$filepath" "$CURRENT_DIR/" 2>>"$LOG_FILE"; then
+			log_debug "Copied: $filepath"
+		else
+			log_error "Failed to copy: $filepath"
+		fi
+	done
+
+	unset SELECTIONS
+	declare -g -A SELECTIONS
+	STATUS_MSG="Copied $count items."
+	load_files
+}
+
 handle_visual_mode() {
 	if [[ "$char" =~ [asdegtwzx] ]]; then 
 		CMD_BUFFER+="$char"
@@ -615,7 +701,7 @@ handle_visual_mode() {
 		fi
 	else
 		case "$char" in
-			$ESCAPE | "v") 
+			"v") 
 				MODE="NORMAL"
 				CMD_BUFFER=""
 				;;
@@ -623,19 +709,28 @@ handle_visual_mode() {
 			j) move_page_down;;
 			k) move_page_up;;
 			h) move_dir_up;;
+			D) delete_selected;;
+			M) move_selected;;
+			C) copy_selected;;
 			"f") MODE="FILTER";;
 			":")
 				[[ -z $CMD_BUFFER ]] && CMD_BUFFER=":"
 				;;
-			$ESCAPE) 
-				read -rsn2 rest
-				local input="$char$rest"
-				case "$input" in
-					$DELETE)
-						read -rsn1 last
-						unset SELECTIONS
-					;;
-				esac
+			$'\e') 
+				if read -rsn2 -t 0.1 rest; then
+					local input="$char$rest"
+					case "$input" in
+						$DELETE)
+							read -rsn1 last
+							unset SELECTIONS 
+							declare -g -A SELECTIONS
+							redraw
+						;;
+					esac
+				else
+					MODE="NORMAL"
+					CMD_BUFFER=""
+				fi
 				;;
 	
 		esac
@@ -689,7 +784,11 @@ ${C_PRIMARY_FG}${BOLD}SORTING & VIEW${RESET}
 ${C_PRIMARY_FG}${BOLD}VISUAL MODE COMMANDS (v)${RESET}
   ${C_HINT_FG}[hint]${RESET}                Select/Deselect specific file.
   ${C_HINT_FG}:[hint]${RESET}               Range select (from last selected to target).
+  ${C_HINT_FG}M${RESET}                     ${BOLD}Move${RESET} all selected items to the current directory.
+  ${C_HINT_FG}C${RESET}                     ${BOLD}Copy${RESET} all selected items to the current directory.
+  ${C_HINT_FG}D${RESET}                     ${BOLD}Delete${RESET} all selected items (asks for 'y' confirmation).
   ${C_HINT_FG}Del${RESET}                   Clear all selections.
+  ${C_HINT_FG}Esc${RESET}                   Return to Normal mode. 
 
 ${C_PRIMARY_FG}${BOLD}SEARCH SYNTAX (/)${RESET}
   ${C_MUTED}name type:[f|d] size:[+|-][k|M|G] date:[-days]${RESET}

@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/venv bash
 
 BACKSPACE=$'\x7f'
 ESCAPE=$'\e'

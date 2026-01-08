@@ -25,7 +25,6 @@ _log() {
 	local msg="${@:2}"
 
 	echo "[$time] [${log_type}] ${msg}" >> "$LOG_FILE"
-	echo "[$time] [${log_type}] ${msg}" >> "$LOG_FILE"
 }
 
 log_debug() { [[ $LOG_LEVEL -ge $LOG_DEBUG ]] && _log $LOG_DEBUG "$1";  }
