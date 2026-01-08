@@ -49,15 +49,12 @@ HINTS=()
 DIRECTORIES=()
 
 
-OUTPUT_BUFFER=""
-
-
 load_dir() {
 	local new_dir="$1"
 	log_debug "Entering load_dir for directory: $new_dir"
 	
 	if ! cd "$new_dir" 2>/dev/null; then
-		cd "$CURRENT_DIR"
+		cd "$CURRENT_DIR" || exit 
 		log_error "Failed to enter $new_dir. Permission denied?"
 		STATUS_MSG="Failed to enter $new_dir. Permission denied?"
 		return 1
@@ -189,8 +186,7 @@ get_hint() {
 }
 
 draw_top() {
-	printf "$RESET_ROW"
-	printf "$CURRENT_DIR\n"
+	printf "${RESET_ROW}%s \n" "$CURRENT_DIR"
 }
 
 
@@ -208,11 +204,10 @@ draw_footer() {
 
 	# Move to last line
 	tput cup $((lines - 1)) 0
-	local total_pages=$((${#FILTERED_FILES[@]} / $ITEMS_PER_PAGE ))
+	local total_pages=$((${#FILTERED_FILES[@]} / ITEMS_PER_PAGE ))
 	if (( total_pages * ITEMS_PER_PAGE < ${#FILTERED_FILES[@]} )); then
 		((total_pages++))
 	fi
-	local fill_len=$((cols - ${#MODE}))
 	local mode_text_len=$((${#MODE} + 4))
 	local selected_text=""
 	
@@ -386,7 +381,8 @@ move_dir_up() {
 			return
 	fi
 
-	if load_dir "$(dirname "$CURRENT_DIR")"; then
+	local target=$(dirname "$CURRENT_DIR")
+	if load_dir "$target"; then
 		log_info "Navigation successful. Now in: $CURRENT_DIR"
 	else
 		log_error "Navigation failed to: $target"
@@ -432,7 +428,7 @@ reverse() {
 
 
 handle_normal_mode() {
-	if [[ "$char" == $BACKSPACE ]]; then 
+	if [[ "$char" == "$BACKSPACE" ]]; then 
 		CMD_BUFFER="${CMD_BUFFER%?}"
 	elif [[ "$char" =~ [asdegtwzx] ]]; then
 		CMD_BUFFER+="$char"
@@ -492,9 +488,7 @@ handle_normal_mode() {
 			$ENTER) 
 				if [[ "${#FILTERED_FILES[@]}" -gt 0 ]]; then 
 					CMD_BUFFER=""
-					cd "${DIRECTORIES[0]}" 2>/dev/null
-					CURRENT_DIR="$(pwd)"
-					load_files	
+					load_dir "${DIRECTORIES[0]}"
 				fi
 				;;
 			q) exit;;
