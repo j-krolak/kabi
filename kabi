@@ -442,7 +442,13 @@ handle_normal_mode() {
 			for i in "${!HINTS[@]}"; do	
 				if [[ "${HINTS[$i]}" == "$CMD_BUFFER" ]]; then
 					CMD_BUFFER=""
-					load_dir "${DIRECTORIES[$i]}"	
+					if [[ -d "${DIRECTORIES[$i]}" ]]; then
+						load_dir "${DIRECTORIES[$i]}"	
+					elif [[ -f "${DIRECTORIES[$i]}" ]]; then
+						xdg-open "${DIRECTORIES[$i]}" >/dev/null 2>&1 &
+					else
+						STATUS_MSG="Error: Path no longer exists or is invalid."
+					fi
 					break
 				fi
 			done
