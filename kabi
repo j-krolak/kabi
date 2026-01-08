@@ -666,6 +666,7 @@ handle_search_mode() {
 		esac
 
 }
+
 show_help() {
     cat << EOF
 ${C_PRIMARY_FG}${BOLD}kabi${RESET} - A Hint-Based Terminal Navigator
@@ -707,6 +708,15 @@ ${C_PRIMARY_FG}${BOLD}OPTIONS${RESET}
 EOF
 }
 
+handle_resize() {
+    # Recalculate dimensions
+    ITEMS_PER_PAGE=$(($(tput lines) - 6))
+    clear
+    redraw
+}
+
+
+
 main() {
 	create_log_dir
 
@@ -736,6 +746,7 @@ main() {
 	clear
 
 	trap cleanup EXIT SIGINT SIGTERM
+	trap handle_resize SIGWINCH
 	load_dir "$CURRENT_DIR"
 	while true; do
 		redraw
