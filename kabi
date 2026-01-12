@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
 
-source include/keys
-source include/colors
-source include/helper
-source include/logging
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+
+if [[ -d "$SCRIPT_DIR/include" ]]; then
+    LIB_DIR="$SCRIPT_DIR/include"
+else
+    LIB_DIR="/usr/lib/kabi"
+fi
+
+source "$LIB_DIR/keys"
+source "$LIB_DIR/colors"
+source "$LIB_DIR/helper"
+source "$LIB_DIR/logging"
 
 shopt -s nullglob
 shopt -s dotglob
