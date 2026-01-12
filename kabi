@@ -40,6 +40,9 @@ LAST_SELECTED=""
 
 CURRENT_PAGE=0
 ITEMS_PER_PAGE=$(($(tput lines) - 6))
+if (( ITEMS_PER_PAGE > 81));  then
+	ITEMS_PER_PAGE=81
+fi
 
 IS_REVERSED=0
 USE_DISK_USAGE=-1
@@ -188,8 +191,8 @@ apply_sort() {
 get_hint() {
 	local index=$1
 	local alphabet=(a s d e g t w z x)
-	local first=$(( index / 7 ))
-	local second=$(( index % 7 ))
+	local first=$(( index / 9 ))
+	local second=$(( index % 9 ))
 	echo "${alphabet[first]}${alphabet[second]}"
 }
 
@@ -812,6 +815,9 @@ EOF
 handle_resize() {
     # Recalculate dimensions
     ITEMS_PER_PAGE=$(($(tput lines) - 6))
+		if ((ITEMS_PER_PAGE > 81)); then
+			ITEMS_PER_PAGE=81
+		fi
     clear
     redraw
 }
