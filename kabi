@@ -598,19 +598,14 @@ delete_selected() {
 	if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
 		log_info "User confirmed deletion of $count items."
 		rm -rf "${!SELECTIONS[@]}" || log_error "Delete failed."
-		STATUS_MSG="${C_SUCCESS}Deleted successfully.${RESET}"
+		STATUS_MSG="${C_SUCCESS}Deleted successfully $count items.${RESET}"
 		unset SELECTIONS
-		declare -A SELECTIONS
+		declare -g -A SELECTIONS
 		load_files
 	else
 		log_info "Deletion cancelled by user."
 		STATUS_MSG="Deletion cancelled."
 	fi
-
-	STATUS_MSG="Deleted $count items."
-	unset SELECTIONS
-	declare -g -A SELECTIONS
-	load_files
 }
 
 move_selected() {
