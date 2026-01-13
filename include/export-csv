@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+export_files_to_cvs() {
+	file_path="$1"
+	shift
+	files=("$@")
+
+
+}

@@ -74,6 +74,27 @@ load_dir() {
 }
 
 
+export_view_to_csv() {
+	local csv_output="filename,size[B],size[human],created_at\n"
+	for i in "${!ALL_FILES[@]}"; do
+		if [[ "${FILTERED_FILES[$i]}" == ".." ]]; then
+			continue
+		fi
+
+		local size="${ALL_FILES_SIZES[$i]}"
+		local human_size="$(format_size "${ALL_FILES_SIZES[$i]}")"
+		local created_at_in_seconds="${ALL_FILES_CREATED_AT[$i]}"
+		local created_at_human="$(date -d @${created_at_in_seconds})"
+		csv_output+="${ALL_FILES[$i]};${size};${human_size};${created_at_human}\n"
+	done
+	local time=$(date +"%Y-%m-%d %H:%M:%S")
+	local filename="kabi-${time}.csv" 
+	touch "$filename"
+	echo -e "$csv_output" >  "$filename"
+	load_files
+	STATUS_MSG="Saved stats to $filename"
+}
+
 load_files() {
 	if (( USE_DISK_USAGE == 1)); then 
 		STATUS_MSG="Loading files..."
@@ -273,6 +294,14 @@ draw_sort_field() {
 	printf "%*s%s %s\n" "$pad" "" "${C_PRIMARY_FG}r${text_color}everse" "${C_PRIMARY_FG}← ${RESET}${SORT_FIELD_TYPES[$CURRENT_SORT_FIELD]}${C_PRIMARY_FG} →${RESET}"
 }
 
+draw_export_label() {
+	local text="export"	
+	local padding=$((9 - ${#text}))
+	local text_color="$C_NORMAL_FG" 
+
+	printf "%*s${C_PRIMARY_FG}${BOLD}E${RESET}${text_color}xport" "$padding" ""
+}
+
 redraw() {
 	printf "${HIDE_CURSOR}$RESET_CURSOR_POS$RESET_ROW"
 	draw_top
@@ -312,12 +341,13 @@ redraw() {
 		fi
 	fi
 
+	draw_export_label
 	draw_disk_usage
 	draw_sort_field
 
 	# Drawing header 
 	printf "$RESET_ROW"
-	printf "${C_MUTED}   %-45s%11s${RESET}\n" "NAME" "SIZE"
+	printf "${C_MUTED}   %-55s%11s${RESET}\n" "NAME" "SIZE"
 
 	# Drawing files list
 	local local_idx=0
@@ -350,7 +380,7 @@ redraw() {
 		printf -v out "%s${C_HINT_FG}%s${RESET} " "$out" "$hint"
 		[[ -d $fullpath ]] && out+="${C_DIR_FG}"
 
-		printf -v out "%s%-45s${RESET}${C_SIZE_FG}%10s${RESET}\n" "$out" "${filename:0:45}" "$file_size"
+		printf -v out "%s%-55s${RESET}${C_SIZE_FG}%10s${RESET}\n" "$out" "${filename:0:55}" "$file_size"
 
 		((local_idx++))
 	done
@@ -479,6 +509,7 @@ handle_normal_mode() {
 					IS_REVERSED=0
 				fi
 				reverse;;
+			E) export_view_to_csv;;
 			$'\e') 
 				read -rsn2 rest
 				local input="$char$rest"
@@ -714,9 +745,11 @@ handle_visual_mode() {
 			$BACKSPACE) CMD_BUFFER="${CMD_BUFFER%?}";;
 			j) move_page_down;;
 			k) move_page_up;;
+			q) exit;;
 			h) move_dir_up;;
 			D) delete_selected;;
 			M) move_selected;;
+
 			C) copy_selected;;
 			"f") MODE="FILTER";;
 			":")
@@ -786,6 +819,7 @@ ${C_PRIMARY_FG}${BOLD}SORTING & VIEW${RESET}
   ${C_HINT_FG}→ / ←${RESET}                 Cycle sort field (Name, Size, Date).
   ${C_HINT_FG}r${RESET}                     Toggle Reverse sort order.
   ${C_HINT_FG}i${RESET}                     Toggle Disk Usage (calculates dir sizes).
+  ${C_HINT_FG}E${RESET}                     Export directory stats to .csv
 
 ${C_PRIMARY_FG}${BOLD}VISUAL MODE COMMANDS (v)${RESET}
   ${C_HINT_FG}[hint]${RESET}                Select/Deselect specific file.
