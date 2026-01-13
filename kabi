@@ -425,7 +425,7 @@ move_dir_up() {
 	# Check if we are already at root
 	if [[ "$CURRENT_DIR" == "/" ]]; then
 			log_warn "Already at root directory. Navigation ignored."
-			set_status "Already at root"
+			STATUS_MSG="Already at root"
 			return
 	fi
 
