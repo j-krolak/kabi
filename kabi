@@ -64,7 +64,7 @@ load_dir() {
 	local new_dir="$1"
 	log_debug "Entering load_dir for directory: $new_dir"
 	
-	if ! cd "$new_dir" 2>/dev/null; then
+	if ! pushd "$new_dir" 2>&1 >/dev/null; then
 		cd "$CURRENT_DIR" || exit 
 		log_error "Failed to enter $new_dir. Permission denied?"
 		STATUS_MSG="Failed to enter $new_dir. Permission denied?"
@@ -474,6 +474,22 @@ reverse() {
 	reverse_array FILTERED_FILES_CREATED_AT 
 }
 
+back() {
+	if ((${#DIRSTACK[@]} <= 1)); then
+		STATUS_MSG="No previous directory (back stack empty)"
+		return
+	fi
+	log_debug "Popping directory from stack"
+	
+	if ! popd 2>&1 >/dev/null; then
+		cd "$CURRENT_DIR" || exit 
+		log_error "popd failed"
+		STATUS_MSG="Failed to go back"
+		return 1
+	fi
+	load_files
+
+}
 
 handle_normal_mode() {
 	if [[ "$char" == "$BACKSPACE" ]]; then 
@@ -502,6 +518,7 @@ handle_normal_mode() {
 			j) move_page_down;;
 			k) move_page_up;;
 			h) move_dir_up;;
+			l)  back;;
 			r) 
 				if [[ $IS_REVERSED -eq 0 ]]; then 
 					IS_REVERSED=1
@@ -804,7 +821,8 @@ ${C_PRIMARY_FG}${BOLD}USAGE${RESET}
 
 ${C_PRIMARY_FG}${BOLD}NAVIGATION${RESET}
   ${C_HINT_FG}j / k${RESET}                 Go to Next / Previous Page
-  ${C_HINT_FG}h${RESET}                     Go to Parent Directory
+  ${C_HINT_FG}h${RESET}                     Go to Parent Directory (pushes history)
+  ${C_HINT_FG}l${RESET}                     Go Back to Previous Directory (pop stack)
   ${C_HINT_FG}[a-z][a-z]${RESET}            Type the 2-letter hint to jump/enter directly.
   ${C_HINT_FG}Enter${RESET}                 Enter the ${BOLD}top directory${RESET} (first item in list).
 
