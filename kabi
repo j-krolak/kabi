@@ -734,6 +734,8 @@ handle_visual_mode() {
 
 						[[ $fullpath == $selected_fullpath || $fullpath == $LAST_SELECTED ]]  && ((is_selecting=-1*is_selecting))
 					done
+
+					LAST_SELECTED="$fullpath"
 					CMD_BUFFER=""
 				fi
 
